@@ -843,3 +843,57 @@ export const testUndoSetAttributeAndDeleteSyncsAttributes = _tc => {
   t.compare(remoteRoot.toDelta()[0].insert.getAttributes(), expectedAttrs)
   t.compare(remoteRoot.toDelta()[0].insert.toString(), expectedText)
 }
+
+/**
+ * A redone item can merge with its right neighbour. Undo must then delete
+ * only the redone part (#806).
+ *
+ * @param {t.TestCase} _tc
+ */
+export const testUndoRedoneItemMergedWithNeighbour = _tc => {
+  const doc = new Y.Doc()
+  const fragment = doc.getXmlFragment('f')
+  const p = new Y.XmlElement('p')
+  p.insert(0, [new Y.XmlText('ab')])
+  fragment.insert(0, [p]) // untracked
+  const undoManager = new Y.UndoManager(fragment, { trackedOrigins: new Set(['me']) })
+  const text = () => /** @type {Y.XmlText} */ (/** @type {Y.XmlElement} */ (fragment.get(0)).get(0)).toString()
+  /**
+   * @param {function():void} f
+   */
+  const step = f => { doc.transact(f, 'me'); undoManager.stopCapturing() }
+  step(() => /** @type {Y.XmlText} */ (p.get(0)).insert(0, 'x'))
+  step(() => /** @type {Y.XmlText} */ (p.get(0)).delete(1, 1))
+  step(() => fragment.delete(0, 1))
+  const states = []
+  while (undoManager.canUndo()) {
+    undoManager.undo()
+    states.push(text())
+  }
+  t.compare(states, ['xb', 'xab', 'ab'])
+}
+
+/**
+ * @param {t.TestCase} _tc
+ */
+export const testRedoRedoneItemMergedWithNeighbour = _tc => {
+  const doc = new Y.Doc()
+  const fragment = doc.getXmlFragment('f')
+  const undoManager = new Y.UndoManager(fragment, { trackedOrigins: new Set(['me']) })
+  const text = () => /** @type {Y.XmlText} */ (/** @type {Y.XmlElement} */ (fragment.get(0)).get(0))
+  /**
+   * @param {function():void} f
+   */
+  const step = f => { doc.transact(f, 'me'); undoManager.stopCapturing() }
+  step(() => {
+    const p = new Y.XmlElement('p')
+    p.insert(0, [new Y.XmlText('')])
+    fragment.insert(0, [p])
+  })
+  step(() => text().insert(0, 'a'))
+  step(() => text().insert(1, 'b'))
+  step(() => text().delete(0, 1))
+  while (undoManager.canUndo()) undoManager.undo()
+  while (undoManager.canRedo()) undoManager.redo()
+  t.compareStrings(text().toString(), 'b')
+}

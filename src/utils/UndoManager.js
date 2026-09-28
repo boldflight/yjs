@@ -79,6 +79,11 @@ const popStackItem = (undoManager, stack, eventType) => {
             if (diff > 0) {
               item = getItemCleanStart(transaction, createID(item.id.client, item.id.clock + diff))
             }
+            // The redone item may since have merged with its right neighbour
+            // (#806). Only this struct's part may be deleted.
+            if (item.length > struct.length) {
+              getItemCleanStart(transaction, createID(item.id.client, item.id.clock + struct.length))
+            }
             struct = item
           }
           if (!struct.deleted && scope.some(type => type === transaction.doc || isParentOf(/** @type {AbstractType<any>} */ (type), /** @type {Item} */ (struct)))) {
